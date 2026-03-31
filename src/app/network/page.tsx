@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { mockUsers } from "@/lib/mock-data";
+import { getDemoUser } from "@/lib/mock-session";
+import { listConnections, upsertConnection, uuid, type DemoConnection } from "@/lib/mock-store";
 
 type UserType = "WHOLESALER" | "RETAILER";
 
@@ -36,31 +39,46 @@ export default function NetworkPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const queryUrl = useMemo(() => {
-    const sp = new URLSearchParams();
-    if (q.trim()) sp.set("q", q.trim());
-    if (userType) sp.set("userType", userType);
-    const s = sp.toString();
-    return s ? `/api/network/users?${s}` : "/api/network/users";
-  }, [q, userType]);
-
   async function loadAll() {
     setLoading(true);
     setError(null);
 
-    const meRes = await fetch("/api/me");
-    const meData = await meRes.json().catch(() => ({}));
-    setMe(meData.user);
+    const u = getDemoUser();
+    setMe(u ? { id: u.id, userType: u.userType, businessName: u.businessName } : null);
 
-    const uRes = await fetch(queryUrl);
-    const uData = await uRes.json().catch(() => ({}));
-    setUsers(uData.users ?? []);
+    const qn = q.trim().toLowerCase();
+    const type = userType;
+    const filtered = mockUsers
+      .filter((x) => {
+        if (type && x.userType !== type) return false;
+        if (!qn) return true;
+        const hay = `${x.businessName} ${x.category ?? ""} ${x.location ?? ""}`.toLowerCase();
+        return hay.includes(qn);
+      })
+      .map((x) => ({
+        id: x.id,
+        userType: x.userType,
+        businessName: x.businessName,
+        category: x.category ?? null,
+        location: x.location ?? null,
+        ratingAvg: x.ratingAvg,
+        ratingCount: x.ratingCount,
+      }));
+    setUsers(filtered);
 
-    if (meData.user) {
-      const cRes = await fetch("/api/connections");
-      const cData = await cRes.json().catch(() => ({}));
-      if (cRes.ok) setConnections(cData.connections ?? []);
-      else setConnections([]);
+    if (u) {
+      const raw = listConnections();
+      const mapped: Connection[] = raw.map((c) => {
+        const wh = mockUsers.find((x) => x.id === c.wholesalerId);
+        const rt = mockUsers.find((x) => x.id === c.retailerId);
+        return {
+          id: c.id,
+          status: c.status,
+          wholesaler: { id: c.wholesalerId, businessName: wh?.businessName ?? "Unknown" },
+          retailer: { id: c.retailerId, businessName: rt?.businessName ?? "Unknown" },
+        };
+      });
+      setConnections(mapped);
     } else {
       setConnections([]);
     }
@@ -74,7 +92,7 @@ export default function NetworkPage() {
       setError("Kuch problem aa gayi.");
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryUrl]);
+  }, [q, userType]);
 
   const connectionMap = useMemo(() => {
     const m = new Map<string, Connection>();
@@ -92,32 +110,41 @@ export default function NetworkPage() {
 
   async function sendConnectRequest(wholesalerId: string) {
     setError(null);
-    const res = await fetch("/api/connections", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ wholesalerId }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setError(data.error ?? "Connect request nahi gaya.");
-      return;
+
+    try {
+      const u = getDemoUser();
+      if (!u) {
+        setError("Connect request bhejne ke liye login karo.");
+        return;
+      }
+      const conn: DemoConnection = {
+        id: uuid("c"),
+        status: "PENDING",
+        wholesalerId,
+        retailerId: u.id,
+      };
+      upsertConnection(conn);
+      await loadAll();
+    } catch {
+      setError("Connect request nahi gaya.");
     }
-    await loadAll();
   }
 
   async function respond(connectionId: string, action: "ACCEPT" | "REJECT") {
     setError(null);
-    const res = await fetch(`/api/connections/${connectionId}/respond`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setError(data.error ?? "Action fail ho gaya.");
-      return;
+
+    try {
+      const nextStatus = action === "ACCEPT" ? "ACCEPTED" : "REJECTED";
+      const existing = listConnections().find((x) => x.id === connectionId);
+      if (!existing) {
+        setError("Action fail ho gaya.");
+        return;
+      }
+      upsertConnection({ ...existing, status: nextStatus });
+      await loadAll();
+    } catch {
+      setError("Action fail ho gaya.");
     }
-    await loadAll();
   }
 
   return (

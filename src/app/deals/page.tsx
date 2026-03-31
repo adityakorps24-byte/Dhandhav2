@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getDemoUser } from "@/lib/mock-session";
+import { addDeal, listDeals, uuid } from "@/lib/mock-store";
 
 type DealType = "REQUIREMENT" | "OFFER";
 
@@ -71,7 +73,7 @@ function DealTypeChip(props: { type: DealType }) {
 export default function DealsPage() {
   const [dealType, setDealType] = useState<DealType | "">("");
   const [deals, setDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [newType, setNewType] = useState<DealType>("REQUIREMENT");
@@ -80,55 +82,41 @@ export default function DealsPage() {
   const [category, setCategory] = useState("");
   const [quantity, setQuantity] = useState("");
 
-  const queryUrl = useMemo(() => {
-    const sp = new URLSearchParams();
-    if (dealType) sp.set("dealType", dealType);
-    const s = sp.toString();
-    return s ? `/api/deals?${s}` : "/api/deals";
-  }, [dealType]);
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-    const res = await fetch(queryUrl);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setDeals([]);
-      setLoading(false);
-      setError(data.error ?? "Deals load nahi huye.");
-      return;
-    }
-    setDeals(data.deals ?? []);
-    setLoading(false);
-  }
+  const filteredDeals = useMemo(() => {
+    const all = deals;
+    if (!dealType) return all;
+    return all.filter((d) => d.dealType === dealType);
+  }, [dealType, deals]);
 
   useEffect(() => {
-    load().catch(() => {
-      setLoading(false);
-      setError("Kuch problem aa gayi.");
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryUrl]);
+    setDeals(listDeals() as unknown as Deal[]);
+  }, []);
 
   async function postDeal(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    const res = await fetch("/api/deals", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const me = getDemoUser();
+      if (!me) {
+        setError("Post karne ke liye login required hai.");
+        return;
+      }
+
+      const d: Deal = {
+        id: uuid("d"),
         dealType: newType,
         title,
-        description: description || undefined,
-        category: category || undefined,
-        quantity: quantity ? Number(quantity) : undefined,
-      }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setError(data.error ?? "Post nahi hua. Login required ho sakta hai.");
+        description: description || null,
+        category: category || null,
+        quantity: quantity ? Number(quantity) : null,
+        createdAt: new Date().toISOString(),
+        author: { id: me.id, businessName: me.businessName, userType: me.userType },
+      };
+      addDeal(d as unknown as import("@/lib/mock-data").MockDeal);
+      setDeals((prev) => [d, ...prev]);
+    } catch {
+      setError("Post nahi hua.");
       return;
     }
 
@@ -137,7 +125,6 @@ export default function DealsPage() {
     setCategory("");
     setQuantity("");
 
-    await load();
   }
 
   return (
@@ -232,7 +219,7 @@ export default function DealsPage() {
         ) : null}
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          {deals.map((d) => (
+          {filteredDeals.map((d) => (
             <div key={d.id} className="dh-card rounded-3xl p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>

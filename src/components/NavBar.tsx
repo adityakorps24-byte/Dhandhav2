@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { clearDemoUser, ensureDefaultDemoUser, getDemoUser } from "@/lib/mock-session";
 
 type MeUser = {
   id: string;
@@ -14,18 +15,8 @@ export function NavBar() {
   const [installPrompt, setInstallPrompt] = useState<unknown>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/me")
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setMe(d.user);
-      })
-      .catch(() => {
-        if (!cancelled) setMe(null);
-      });
-    return () => {
-      cancelled = true;
-    };
+    ensureDefaultDemoUser();
+    setMe(getDemoUser());
   }, []);
 
   useEffect(() => {
@@ -49,7 +40,7 @@ export function NavBar() {
   }, []);
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    clearDemoUser();
     window.location.href = "/";
   }
 

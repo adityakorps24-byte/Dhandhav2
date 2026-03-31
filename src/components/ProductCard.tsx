@@ -1,7 +1,9 @@
 "use client";
 
-import type { StockStatus } from "@prisma/client";
 import { useState } from "react";
+import type { StockStatus } from "@/lib/mock-data";
+import { getDemoUser } from "@/lib/mock-session";
+import { findUserBusinessName, listOrders, upsertOrder, uuid } from "@/lib/mock-store";
 
 const statusLabel: Record<StockStatus, string> = {
   MAAL_AVAILABLE: "Maal Available",
@@ -38,26 +40,51 @@ export function ProductCard(props: {
     setError(null);
     setLoading(true);
 
-    const res = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        productId: id,
-        quantity: Number(orderQty),
+    try {
+      const me = getDemoUser();
+      if (!me) {
+        setLoading(false);
+        setError("Order request bhejne ke liye login karo.");
+        return;
+      }
+
+      const qty = Number(orderQty);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        setLoading(false);
+        setError("Quantity galat hai.");
+        return;
+      }
+
+      const orderId = uuid("o");
+      const now = new Date().toISOString();
+      const next = {
+        id: orderId,
+        status: "PENDING" as const,
         note: note || undefined,
-      }),
-    });
+        createdAt: now,
+        updatedAt: now,
+        retailer: { id: me.id, businessName: me.businessName },
+        wholesaler: { id: "u_wh_1", businessName: findUserBusinessName("u_wh_1") },
+        items: [
+          {
+            id: uuid("oi"),
+            quantity: qty,
+            unitPrice: price,
+            product: { id, name, category },
+          },
+        ],
+      };
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
+      void listOrders();
+      upsertOrder(next);
+
       setLoading(false);
-      setError(data.error ?? "Order request nahi gaya.");
-      return;
+      setOpen(false);
+      setNote("");
+    } catch {
+      setLoading(false);
+      setError("Order request nahi gaya.");
     }
-
-    setLoading(false);
-    setOpen(false);
-    setNote("");
   }
 
   return (

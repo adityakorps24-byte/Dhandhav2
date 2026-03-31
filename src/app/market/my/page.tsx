@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { StockStatus } from "@prisma/client";
+import type { StockStatus } from "@/lib/mock-data";
+import { getDemoUser } from "@/lib/mock-session";
+import { listProducts, upsertProduct, uuid } from "@/lib/mock-store";
 
 type MeUser = {
   id: string;
@@ -47,22 +49,24 @@ export default function MyMarketPage() {
 
     (async () => {
       try {
-        const meRes = await fetch("/api/me");
-        const meData = await meRes.json().catch(() => ({}));
+        const u = getDemoUser();
         if (cancelled) return;
-        setMe(meData.user);
+        setMe(u ? { id: u.id, userType: u.userType, businessName: u.businessName } : null);
 
-        const pRes = await fetch("/api/my/products");
-        const pData = await pRes.json().catch(() => ({}));
-        if (cancelled) return;
-
-        if (!pRes.ok) {
-          setProducts([]);
-          setError(pData.error ?? "Products load nahi huye.");
-          return;
-        }
-
-        setProducts(pData.products ?? []);
+        const all = listProducts();
+        const mine = all
+          .filter((p) => p.ownerId === (u?.id ?? ""))
+          .map((p) => ({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            price: p.price,
+            quantity: p.quantity,
+            minOrderQty: p.minOrderQty,
+            stockStatus: p.stockStatus,
+            isPublic: true,
+          }));
+        setProducts(mine);
       } catch {
         if (cancelled) return;
         setProducts([]);
@@ -82,21 +86,23 @@ export default function MyMarketPage() {
     setLoading(true);
     setError(null);
 
-    const meRes = await fetch("/api/me");
-    const meData = await meRes.json().catch(() => ({}));
-    setMe(meData.user);
+    const u = getDemoUser();
+    setMe(u ? { id: u.id, userType: u.userType, businessName: u.businessName } : null);
 
-    const pRes = await fetch("/api/my/products");
-    const pData = await pRes.json().catch(() => ({}));
-
-    if (!pRes.ok) {
-      setProducts([]);
-      setLoading(false);
-      setError(pData.error ?? "Products load nahi huye.");
-      return;
-    }
-
-    setProducts(pData.products ?? []);
+    const all = listProducts();
+    const mine = all
+      .filter((p) => p.ownerId === (u?.id ?? ""))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        price: p.price,
+        quantity: p.quantity,
+        minOrderQty: p.minOrderQty,
+        stockStatus: p.stockStatus,
+        isPublic: true,
+      }));
+    setProducts(mine);
     setLoading(false);
   }
 
@@ -104,24 +110,31 @@ export default function MyMarketPage() {
     e.preventDefault();
     setError(null);
 
-    const res = await fetch("/api/products", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const u = getDemoUser();
+      if (!u) {
+        setError("Login required hai.");
+        return;
+      }
+      if (u.userType !== "WHOLESALER") {
+        setError("Sirf wholesaler products add kar sakta hai.");
+        return;
+      }
+
+      const p = {
+        id: uuid("p"),
         name,
         category,
         price: Number(price),
         quantity: Number(quantity),
         minOrderQty: Number(minOrderQty),
         stockStatus,
-        isPublic,
-      }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      setError(data.error ?? "Product add nahi hua.");
+        ownerId: u.id,
+        ownerBusinessName: u.businessName,
+      };
+      upsertProduct(p);
+    } catch {
+      setError("Product add nahi hua.");
       return;
     }
 
@@ -138,21 +151,21 @@ export default function MyMarketPage() {
 
   async function patchProduct(id: string, patch: Partial<MyProduct>) {
     setError(null);
-    const res = await fetch(`/api/products/${id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(patch),
-    });
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setError(data.error ?? "Update nahi hua.");
-      return;
+    try {
+      const all = listProducts();
+      const existing = all.find((x) => x.id === id);
+      if (!existing) return;
+
+      upsertProduct({
+        ...existing,
+        stockStatus: patch.stockStatus ?? existing.stockStatus,
+      });
+
+      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    } catch {
+      setError("Update nahi hua.");
     }
-
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...data.product } : p)),
-    );
   }
 
   return (

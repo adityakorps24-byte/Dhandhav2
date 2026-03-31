@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type { StockStatus } from "@prisma/client";
+import { useMemo, useState } from "react";
 import { ProductCard } from "@/components/ProductCard";
+import { mockProducts } from "@/lib/mock-data";
 
 type ApiProduct = {
   id: string;
@@ -11,7 +11,7 @@ type ApiProduct = {
   price: number;
   quantity: number;
   minOrderQty: number;
-  stockStatus: StockStatus;
+  stockStatus: "MAAL_AVAILABLE" | "STOCK_KAM_HAI" | "STOCK_KHATAM";
   owner: { id: string; businessName: string };
 };
 
@@ -20,43 +20,45 @@ export default function MarketPage() {
   const [category, setCategory] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
-  const [products, setProducts] = useState<ApiProduct[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const queryUrl = useMemo(() => {
-    const sp = new URLSearchParams();
-    if (q.trim()) sp.set("q", q.trim());
-    if (category.trim()) sp.set("category", category.trim());
-    if (minPrice.trim()) sp.set("minPrice", minPrice.trim());
-    if (maxPrice.trim()) sp.set("maxPrice", maxPrice.trim());
-    const s = sp.toString();
-    return s ? `/api/products?${s}` : "/api/products";
-  }, [q, category, minPrice, maxPrice]);
+  const allProducts: ApiProduct[] = useMemo(() => {
+    return mockProducts.map((p) => ({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      price: p.price,
+      quantity: p.quantity,
+      minOrderQty: p.minOrderQty,
+      stockStatus: p.stockStatus,
+      owner: { id: p.ownerId, businessName: p.ownerBusinessName },
+    }));
+  }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch(queryUrl)
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        setProducts(d.products ?? []);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setProducts([]);
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [queryUrl]);
+  const products = useMemo(() => {
+    const qn = q.trim().toLowerCase();
+    const cn = category.trim().toLowerCase();
+
+    const min = minPrice.trim() ? Number.parseInt(minPrice.trim(), 10) : undefined;
+    const max = maxPrice.trim() ? Number.parseInt(maxPrice.trim(), 10) : undefined;
+
+    return allProducts.filter((p) => {
+      if (cn && p.category.toLowerCase() !== cn) return false;
+      if (Number.isFinite(min) && typeof min === "number" && p.price < min) return false;
+      if (Number.isFinite(max) && typeof max === "number" && p.price > max) return false;
+
+      if (!qn) return true;
+      const hay = `${p.name} ${p.category} ${p.owner.businessName}`.toLowerCase();
+      return hay.includes(qn);
+    });
+  }, [allProducts, category, maxPrice, minPrice, q]);
+
+  const loading = false;
 
   const categories = useMemo(() => {
     const set = new Set<string>();
-    for (const p of products) set.add(p.category);
+    for (const p of allProducts) set.add(p.category);
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [products]);
+  }, [allProducts]);
 
   return (
     <div className="dh-page flex flex-1">
@@ -71,7 +73,6 @@ export default function MarketPage() {
             <input
               value={q}
               onChange={(e) => {
-                setLoading(true);
                 setQ(e.target.value);
               }}
               placeholder="Search karo: product / category / seller..."
@@ -81,7 +82,6 @@ export default function MarketPage() {
             <select
               value={category}
               onChange={(e) => {
-                setLoading(true);
                 setCategory(e.target.value);
               }}
               className="h-12 rounded-2xl border border-blue-100 bg-white px-4 font-semibold outline-none focus:border-blue-300"
@@ -100,7 +100,6 @@ export default function MarketPage() {
               <input
                 value={minPrice}
                 onChange={(e) => {
-                  setLoading(true);
                   setMinPrice(e.target.value);
                 }}
                 placeholder="Min price (₹)"
@@ -110,7 +109,6 @@ export default function MarketPage() {
               <input
                 value={maxPrice}
                 onChange={(e) => {
-                  setLoading(true);
                   setMaxPrice(e.target.value);
                 }}
                 placeholder="Max price (₹)"
@@ -121,7 +119,6 @@ export default function MarketPage() {
             <button
               type="button"
               onClick={() => {
-                setLoading(true);
                 setMinPrice("");
                 setMaxPrice("");
               }}

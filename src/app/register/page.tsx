@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { setDemoUserForType } from "@/lib/mock-session";
 
 type UserType = "WHOLESALER" | "RETAILER";
 
@@ -19,28 +20,18 @@ export default function RegisterPage() {
     setLoading(true);
     setError(null);
 
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        userType,
-        businessName,
-        category: category || undefined,
-        location: location || undefined,
-        email,
-        password,
-      }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
+    try {
+      void businessName;
+      void category;
+      void location;
+      void email;
+      void password;
+      setDemoUserForType(userType);
+      window.location.href = "/market";
+    } catch {
       setLoading(false);
-      setError(data.error ?? "Register nahi ho paya. Dobara try karo.");
-      return;
+      setError("Register nahi ho paya. Dobara try karo.");
     }
-
-    window.location.href = "/market";
   }
 
   return (

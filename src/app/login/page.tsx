@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { setDemoUserForType } from "@/lib/mock-session";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -13,21 +14,15 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
+    try {
+      void email;
+      void password;
+      setDemoUserForType("RETAILER");
+      window.location.href = "/market";
+    } catch {
       setLoading(false);
-      setError(data.error ?? "Login nahi ho paya. Dobara try karo.");
-      return;
+      setError("Login nahi ho paya. Dobara try karo.");
     }
-
-    window.location.href = "/market";
   }
 
   return (

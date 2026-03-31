@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getDemoUser } from "@/lib/mock-session";
+import { listOrders, upsertOrder } from "@/lib/mock-store";
 
 type OrderStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "FULFILLED";
 
@@ -40,27 +42,20 @@ export default function OrdersPage() {
     setLoading(true);
     setError(null);
 
-    const meRes = await fetch("/api/me");
-    const meData = await meRes.json().catch(() => ({}));
-    setMe(meData.user);
+    const u = getDemoUser();
+    setMe(u ? { id: u.id, userType: u.userType, businessName: u.businessName } : null);
 
-    if (!meData.user) {
+    if (!u) {
       setOrders([]);
       setLoading(false);
       return;
     }
 
-    const res = await fetch("/api/orders");
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      setOrders([]);
-      setLoading(false);
-      setError(data.error ?? "Orders load nahi huye.");
-      return;
-    }
-
-    setOrders(data.orders ?? []);
+    const all = listOrders() as unknown as Order[];
+    const mine = all.filter((o) =>
+      u.userType === "WHOLESALER" ? o.wholesaler.id === u.id : o.retailer.id === u.id,
+    );
+    setOrders(mine);
     setLoading(false);
   }
 
@@ -83,19 +78,19 @@ export default function OrdersPage() {
 
   async function setStatus(orderId: string, status: "ACCEPTED" | "REJECTED" | "FULFILLED") {
     setError(null);
-    const res = await fetch(`/api/orders/${orderId}/status`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setError(data.error ?? "Status change nahi hua.");
-      return;
+    try {
+      setOrders((prev) => {
+        const next = prev.map((o) =>
+          o.id === orderId ? { ...o, status, updatedAt: new Date().toISOString() } : o,
+        );
+        const updated = next.find((o) => o.id === orderId);
+        if (updated) upsertOrder(updated as unknown as import("@/lib/mock-data").MockOrder);
+        return next;
+      });
+    } catch {
+      setError("Status change nahi hua.");
     }
-
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? data.order : o)));
   }
 
   return (

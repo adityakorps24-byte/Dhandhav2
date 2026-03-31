@@ -11,6 +11,7 @@ type MeUser = {
 
 export function NavBar() {
   const [me, setMe] = useState<MeUser | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<unknown>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,9 +28,42 @@ export function NavBar() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {
+        // ignore
+      });
+    }
+
+    function onBeforeInstallPrompt(e: Event) {
+      e.preventDefault();
+      setInstallPrompt(e as unknown);
+    }
+
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    };
+  }, []);
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/";
+  }
+
+  async function installApp() {
+    const p = installPrompt as {
+      prompt?: () => Promise<void>;
+      userChoice?: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+    } | null;
+
+    if (!p?.prompt) return;
+
+    await p.prompt();
+    await p.userChoice?.catch(() => undefined);
+    setInstallPrompt(null);
   }
 
   return (
@@ -84,21 +118,32 @@ export function NavBar() {
             </Link>
 
             <div className="ml-auto shrink-0">
-              {me ? (
-                <button
-                  onClick={logout}
-                  className="rounded-full bg-white px-4 py-2 text-sm font-extrabold text-blue-700 hover:bg-blue-50"
-                >
-                  Logout
-                </button>
-              ) : (
-                <Link
-                  href="/login"
-                  className="rounded-full bg-white px-4 py-2 text-sm font-extrabold text-blue-700 hover:bg-blue-50"
-                >
-                  Login karo
-                </Link>
-              )}
+              <div className="flex items-center gap-2">
+                {installPrompt ? (
+                  <button
+                    onClick={installApp}
+                    className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm hover:bg-emerald-600"
+                  >
+                    Install App
+                  </button>
+                ) : null}
+
+                {me ? (
+                  <button
+                    onClick={logout}
+                    className="rounded-full bg-white px-4 py-2 text-sm font-extrabold text-blue-700 hover:bg-blue-50"
+                  >
+                    Logout
+                  </button>
+                ) : (
+                  <Link
+                    href="/login"
+                    className="rounded-full bg-white px-4 py-2 text-sm font-extrabold text-blue-700 hover:bg-blue-50"
+                  >
+                    Login karo
+                  </Link>
+                )}
+              </div>
             </div>
           </nav>
         </div>

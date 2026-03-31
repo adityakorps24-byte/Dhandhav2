@@ -1,0 +1,206 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserType {
+  WHOLESALER
+  RETAILER
+}
+
+enum StockStatus {
+  MAAL_AVAILABLE
+  STOCK_KAM_HAI
+  STOCK_KHATAM
+}
+
+enum ConnectionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum DealType {
+  REQUIREMENT
+  OFFER
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  FULFILLED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  userType     UserType
+
+  businessName String
+  category     String?
+  location     String?
+
+  ratingAvg    Float    @default(0)
+  ratingCount  Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store Store?
+
+  products           Product[]      @relation("ProductOwner")
+  connectionsAsWholesaler Connection[] @relation("WholesalerConnections")
+  connectionsAsRetailer  Connection[] @relation("RetailerConnections")
+
+  messagesSent     Message[] @relation("MessagesSent")
+  messagesReceived Message[] @relation("MessagesReceived")
+
+  deals DealPost[]
+
+  ordersAsRetailer   OrderRequest[] @relation("OrdersAsRetailer")
+  ordersAsWholesaler OrderRequest[] @relation("OrdersAsWholesaler")
+}
+
+model Store {
+  id          String @id @default(cuid())
+  ownerId     String @unique
+  owner       User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+  orders   OrderRequest[]
+}
+
+model Product {
+  id           String @id @default(cuid())
+  ownerId      String
+  owner        User   @relation("ProductOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  storeId      String?
+  store        Store? @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  name         String
+  category     String
+  price        Int
+  quantity     Int
+  minOrderQty  Int    @default(1)
+
+  stockStatus  StockStatus @default(MAAL_AVAILABLE)
+  isPublic     Boolean     @default(true)
+
+  imageUrl     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orderItems OrderItem[]
+
+  @@index([category])
+  @@index([isPublic])
+  @@index([stockStatus])
+}
+
+model Connection {
+  id            String @id @default(cuid())
+  wholesalerId  String
+  retailerId    String
+  status        ConnectionStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wholesaler User @relation("WholesalerConnections", fields: [wholesalerId], references: [id], onDelete: Cascade)
+  retailer   User @relation("RetailerConnections", fields: [retailerId], references: [id], onDelete: Cascade)
+
+  @@unique([wholesalerId, retailerId])
+  @@index([status])
+}
+
+model Message {
+  id         String @id @default(cuid())
+  senderId   String
+  receiverId String
+  body       String
+
+  createdAt DateTime @default(now())
+
+  sender   User @relation("MessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("MessagesReceived", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, receiverId])
+  @@index([createdAt])
+}
+
+model DealPost {
+  id          String @id @default(cuid())
+  authorId    String
+  author      User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  dealType    DealType
+  title       String
+  description String?
+  category    String?
+  quantity    Int?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dealType])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model OrderRequest {
+  id           String @id @default(cuid())
+  storeId      String
+  store        Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  retailerId   String
+  wholesalerId String
+
+  retailer   User @relation("OrdersAsRetailer", fields: [retailerId], references: [id], onDelete: Cascade)
+  wholesaler User @relation("OrdersAsWholesaler", fields: [wholesalerId], references: [id], onDelete: Cascade)
+
+  status     OrderStatus @default(PENDING)
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items OrderItem[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id           String @id @default(cuid())
+  orderId      String
+  order        OrderRequest @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  quantity     Int
+  unitPrice    Int
+
+  @@index([orderId])
+  @@index([productId])
+}
